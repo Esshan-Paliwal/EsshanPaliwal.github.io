@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCU MQTT Dashboard</title>
+    <!-- 1. Include Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Include the Paho MQTT Client library -->
+    <!-- This is the library that lets us speak MQTT from the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js"></script>
+    <style>
+        /* A simple gradient background */
+        body {
+            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+        }
+        /* Custom styles for the status card */
+        .status-normal {
+            background-color: #f0fff4; /* green-50 */
+            border-left-color: #48bb78; /* green-500 */
+        }
+        .status-normal p {
+            color: #2f855a; /* green-700 */
+        }
+        .status-warning {
+            background-color: #fff5f5; /* red-50 */
+            border-left-color: #f56565; /* red-500 */
+        }
+        .status-warning p {
+            color: #c53030; /* red-700 */
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-6 text-center">
+            <h1 class="text-4xl font-bold text-gray-800">Multimeter Dashboard</h1>
+            <p class="text-lg text-gray-600">Real-time data from your device via MQTT</p>
+        </header>
+
+        <!-- Connection Status Indicator -->
+        <div id="status-container" class="mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500">
+            <p class="font-semibold text-lg text-red-700">
+                Status: <span id="connection-status" class="font-bold">Disconnected</span>
+            </p>
+        </div>
+
+        <!-- Dashboard Data Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            <!-- Card: DC Voltage -->
+            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
+                <h2 class="text-xl font-semibold text-gray-500 mb-2">DC Voltage</h2>
+                <div class="text-5xl font-bold text-blue-600">
+                    <span id="dc-voltage-value">--</span><span class="text-3xl"> V</span>
+                </div>
+            </div>
+
+            <!-- Card: DC Current -->
+            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
+                <h2 class="text-xl font-semibold text-gray-500 mb-2">DC Current</h2>
+                <div class="text-5xl font-bold text-green-600">
+                    <span id="dc-current-value">--</span><span class="text-3xl"> A</span>
+                </div>
+            </div>
+
+            <!-- Card: AC Voltage -->
+            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
+                <h2 class="text-xl font-semibold text-gray-500 mb-2">AC Voltage</h2>
+                <div class="text-5xl font-bold text-purple-600">
+                    <span id="ac-voltage-value">--</span><span class="text-3xl"> V</span>
+                </div>
+            </div>
+
+            <!-- Card: AC Current -->
+            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
+                <h2 class="text-xl font-semibold text-gray-500 mb-2">AC Current</h2>
+                <div class="text-5xl font-bold text-yellow-600">
+                    <span id="ac-current-value">--</span><span class="text-3xl"> A</span>
+                </div>
+            </div>
+
+            <!-- Card: System Status -->
+            <div id="system-status-card" class="bg-white p-6 rounded-lg shadow-lg text-center md:col-span-2 lg:col-span-1 border-l-4 status-normal">
+                <h2 class="text-xl font-semibold text-gray-500 mb-2">System Status</h2>
+                <div class="text-4xl font-bold">
+                    <p id="system-status-text">Under Control</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Raw Message Log (for debugging) -->
+        <div class="mt-8 bg-gray-900 text-white p-4 rounded-lg shadow-inner max-h-60 overflow-y-auto font-mono">
+            <h3 class="text-lg font-semibold mb-2">Raw Message Log:</h3>
+            <pre id="message-log" class="text-sm whitespace-pre-wrap"></pre>
+        </div>
+    </div>
+
+    <!-- 3. The Core JavaScript Logic -->
+    <script>
+        // ##################################################################
+        // ###           START: REQUIRED USER CONFIGURATION           ###
+        // ##################################################################
+
+        // !! IMPORTANT !!
+        // Replace these values with your own MQTT broker details.
+        // This example uses a public test broker (HiveMQ).
+        // For production, use your own broker.
+        // If your broker is on your local network, use its local IP.
+        // If it's on the web, use its domain name (e.g., "mybroker.example.com").
+        const brokerHost = "broker.hivemq.com";
+        
+        // Note: The port must be the WebSocket port (wss or ws), NOT the standard MQTT port (1883).
+        // For hivemq.com's public broker, the WebSocket port is 8000.
+        // If you use SSL (wss://), the default is often 8084 or 8884.
+        const brokerPort = 8000;
+
+        // !! IMPORTANT !!
+        // Replace this with the topic your microcontroller is PUBLISHING to.
+        // This dashboard will SUBSCRIBE to this topic.
+        // Make sure it's an exact match!
+        const MqttTopic = "my-multimeter/data"; // Example: "home/livingroom/sensors"
+
+        // ##################################################################
+        // ###            END: REQUIRED USER CONFIGURATION            ###
+        // ##################################################################
+
+
+        // --- Get references to our HTML elements ---
+        const statusElement = document.getElementById("connection-status");
+        const statusContainer = document.getElementById("status-container");
+        
+        // References for multimeter values
+        const dcVoltageElement = document.getElementById("dc-voltage-value");
+        const dcCurrentElement = document.getElementById("dc-current-value");
+        const acVoltageElement = document.getElementById("ac-voltage-value");
+        const acCurrentElement = document.getElementById("ac-current-value");
+        
+        // References for system status card
+        const systemStatusCard = document.getElementById("system-status-card");
+        const systemStatusText = document.getElementById("system-status-text");
+
+        const messageLog = document.getElementById("message-log");
+
+        // --- Create a unique client ID for this dashboard session ---
+        const clientId = "mcu_dashboard_" + Math.random().toString(16).substr(2, 8);
+
+        // --- Create a new Paho MQTT client ---
+        const client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
+
+        // --- Set up the callback functions ---
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // --- Function to connect to the broker ---
+        function startConnect() {
+            logToScreen("Connecting to MQTT broker...");
+            client.connect({
+                onSuccess: onConnect,
+                onFailure: onConnectFailure,
+                useSSL: false // Change to true if you use 'wss://' (secure websockets)
+            });
+        }
+
+        // --- Called when the client connects successfully ---
+        function onConnect() {
+            logToScreen("Connected to broker!");
+            
+            // Update the status UI
+            statusElement.textContent = "Connected";
+            statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-green-100 border-l-4 border-green-500";
+            statusContainer.querySelector('p').className = "font-semibold text-lg text-green-700";
+
+            // Subscribe to the topic
+            logToScreen(`Subscribing to topic: ${MqttTopic}`);
+            client.subscribe(MqttTopic);
+        }
+
+        // --- Called when the client fails to connect ---
+        function onConnectFailure(response) {
+            logToScreen("Connection failed: " + response.errorMessage);
+            statusElement.textContent = "Connection Failed!";
+            statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500";
+            statusContainer.querySelector('p').className = "font-semibold text-lg text-red-700";
+        }
+
+        // --- Called when the connection is lost ---
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                logToScreen("Connection lost: " + responseObject.errorMessage);
+                statusElement.textContent = "Connection Lost!";
+                statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500";
+                statusContainer.querySelector('p').className = "font-semibold text-lg text-red-700";
+                
+                // Optional: Try to reconnect automatically
+                // logToScreen("Attempting to reconnect...");
+                // setTimeout(startConnect, 5000); // Try again in 5 seconds
+            }
+        }
+
+        // --- Called when a message arrives ---
+        function onMessageArrived(message) {
+            const topic = message.destinationName;
+            const payload = message.payloadString;
+            logToScreen(`Message arrived on topic '${topic}': ${payload}`);
+
+            // --- THIS IS THE CORE LOGIC ---
+            // We now assume the microcontroller is sending data as a JSON string
+            // in a format like this:
+            //
+            // For normal status:
+            // {"dc_v": 12.05, "dc_a": 0.52, "ac_v": 119.8, "ac_a": 1.2, "status": "normal"}
+            //
+            // For a warning status:
+            // {"dc_v": 12.01, "dc_a": 3.1, "ac_v": 120.1, "ac_a": 1.2, "status": "warning", "message": "DC Current High"}
+            //
+
+            try {
+                const data = JSON.parse(payload);
+
+                // Check for DC Voltage
+                if (data.dc_v !== undefined) {
+                    dcVoltageElement.textContent = data.dc_v.toFixed(2); // .toFixed(2) for 2 decimal places
+                }
+
+                // Check for DC Current
+                if (data.dc_a !== undefined) {
+                    dcCurrentElement.textContent = data.dc_a.toFixed(2);
+                }
+                
+                // Check for AC Voltage
+                if (data.ac_v !== undefined) {
+                    acVoltageElement.textContent = data.ac_v.toFixed(2);
+                }
+
+                // Check for AC Current
+                if (data.ac_a !== undefined) {
+                    acCurrentElement.textContent = data.ac_a.toFixed(2);
+                }
+
+                // Check for System Status
+                if (data.status !== undefined) {
+                    if (data.status === "warning") {
+                        // Set card to WARNING state
+                        systemStatusCard.className = systemStatusCard.className.replace("status-normal", "status-warning");
+                        // Display the warning message if it exists, otherwise a generic warning
+                        systemStatusText.textContent = data.message || "WARNING!";
+                    } else {
+                        // Set card to NORMAL state
+                        systemStatusCard.className = systemStatusCard.className.replace("status-warning", "status-normal");
+                        systemStatusText.textContent = "Under Control";
+                    }
+                }
+
+            } catch (error) {
+                logToScreen("Error parsing incoming message as JSON: " + error.message);
+                logToScreen("Received payload: " + payload);
+            }
+        }
+
+        // --- Helper function to log to the on-screen console ---
+        function logToScreen(message) {
+            console.log(message); // Also log to browser console
+            const now = new Date().toLocaleTimeString();
+            messageLog.innerHTML = `[${now}] ${message}\n` + messageLog.innerHTML;
+            // Limit log to 50 entries
+            const lines = messageLog.innerHTML.split('\n');
+            if (lines.length > 50) {
+                messageLog.innerHTML = lines.slice(0, 50).join('\n');
+            }
+        }
+
+        // --- Start the connection process when the page loads ---
+        window.addEventListener('load', startConnect);
+
+    </script>
+</body>
+</html>
