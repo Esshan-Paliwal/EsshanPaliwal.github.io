@@ -1,249 +1,135 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multimeter Dashboard</title>
-    <!-- Include Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Include the Paho MQTT Client library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js"></script>
-    <style>
-        /* A simple gradient background */
-        body {
-            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-        }
-        /* Custom styles for the status card */
-        .status-normal {
-            background-color: #f0fff4; /* green-50 */
-            border-left-color: #48bb78; /* green-500 */
-        }
-        .status-normal p {
-            color: #2f855a; /* green-700 */
-        }
-        .status-warning {
-            background-color: #fff5f5; /* red-50 */
-            border-left-color: #f56565; /* red-500 */
-        }
-        .status-warning p {
-            color: #c53030; /* red-700 */
-        }
-    </style>
-</head>
-<body class="font-sans min-h-screen p-4 md:p-8">
-    <div class="max-w-4xl mx-auto">
-        <header class="mb-6 text-center">
-            <h1 class="text-4xl font-bold text-gray-800">Multimeter Dashboard</h1>
-            <p class="text-lg text-gray-600">Real-time data from your device via MQTT</p>
-        </header>
+#include <WiFi.h>          // Use <ESP8266WiFi.h> if using ESP8266
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 
-        <!-- Connection Status Indicator -->
-        <div id="status-container" class="mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500">
-            <p class="font-semibold text-lg text-red-700">
-                Status: <span id="connection-status" class="font-bold">Disconnected</span>
-            </p>
-        </div>
+// --- 1. WIFI SETTINGS ---
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-        <!-- Dashboard Data Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            <!-- Card: DC Voltage -->
-            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
-                <h2 class="text-xl font-semibold text-gray-500 mb-2">DC Voltage</h2>
-                <div class="text-5xl font-bold text-blue-600">
-                    <span id="dc-voltage-value">--</span><span class="text-3xl"> V</span>
-                </div>
-            </div>
+// --- 2. MQTT SETTINGS ---
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883; 
+const char* topic_data = "my-multimeter/data";
+const char* topic_command = "my-multimeter/command"; // New topic to listen to!
 
-            <!-- Card: DC Current -->
-            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
-                <h2 class="text-xl font-semibold text-gray-500 mb-2">DC Current</h2>
-                <div class="text-5xl font-bold text-green-600">
-                    <span id="dc-current-value">--</span><span class="text-3xl"> A</span>
-                </div>
-            </div>
+WiFiClient espClient;
+PubSubClient client(espClient);
 
-            <!-- Card: AC Voltage -->
-            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
-                <h2 class="text-xl font-semibold text-gray-500 mb-2">AC Voltage</h2>
-                <div class="text-5xl font-bold text-purple-600">
-                    <span id="ac-voltage-value">--</span><span class="text-3xl"> V</span>
-                </div>
-            </div>
+// --- 3. SYSTEM STATE ---
+bool systemActive = true; // Starts as ON
 
-            <!-- Card: AC Current -->
-            <div class="bg-white p-6 rounded-lg shadow-lg text-center transform transition-transform hover:scale-105">
-                <h2 class="text-xl font-semibold text-gray-500 mb-2">AC Current</h2>
-                <div class="text-5xl font-bold text-yellow-600">
-                    <span id="ac-current-value">--</span><span class="text-3xl"> A</span>
-                </div>
-            </div>
+// --- SETUP ---
+void setup() {
+  Serial.begin(115200);
+  setup_wifi();
+  
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback); // Register the function that handles incoming messages
+}
 
-            <!-- Card: System Status -->
-            <div id="system-status-card" class="bg-white p-6 rounded-lg shadow-lg text-center md:col-span-2 lg:col-span-1 border-l-4 status-normal">
-                <h2 class="text-xl font-semibold text-gray-500 mb-2">System Status</h2>
-                <div class="text-4xl font-bold">
-                    <p id="system-status-text">Under Control</p>
-                </div>
-            </div>
+// --- WIFI CONNECT ---
+void setup_wifi() {
+  delay(10);
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected!");
+}
 
-        </div>
+// --- MQTT CALLBACK (RECEIVE MESSAGES) ---
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
 
-        <!-- Raw Message Log (for debugging) -->
-        <div class="mt-8 bg-gray-900 text-white p-4 rounded-lg shadow-inner max-h-60 overflow-y-auto font-mono">
-            <h3 class="text-lg font-semibold mb-2">Raw Message Log:</h3>
-            <pre id="message-log" class="text-sm whitespace-pre-wrap"></pre>
-        </div>
-    </div>
+  // Convert payload to a String for easy comparison
+  String msg = "";
+  for (int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  Serial.println(msg);
 
-    <!-- The Core JavaScript Logic -->
-    <script>
-        // ##################################################################
-        // ###           START: REQUIRED USER CONFIGURATION           ###
-        // ##################################################################
+  // --- HANDLE COMMANDS ---
+  if (String(topic) == topic_command) {
+    if (msg == "CUTOFF") {
+      Serial.println("!!! EMERGENCY CUTOFF RECEIVED !!!");
+      systemActive = false;
+      // Add code here to physically turn off relay: digitalWrite(RELAY_PIN, LOW);
+    }
+    else if (msg == "RESET") {
+      Serial.println("... System Resetting ...");
+      systemActive = true;
+      // Add code here to turn relay back on: digitalWrite(RELAY_PIN, HIGH);
+    }
+  }
+}
 
-        // MQTT Broker Settings
-        const brokerHost = "broker.hivemq.com";
-        
-        // CHANGED: Using Port 8884 (Secure WebSocket) to prevent blocking
-        const brokerPort = 8884; 
+// --- RECONNECT ---
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
+    
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+      // !! IMPORTANT: Subscribe to the command topic !!
+      client.subscribe(topic_command);
+    } else {
+      delay(5000);
+    }
+  }
+}
 
-        // Topic
-        const MqttTopic = "my-multimeter/data"; 
+// --- MAIN LOOP ---
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop(); // Keep MQTT alive
 
-        // ##################################################################
-        // ###            END: REQUIRED USER CONFIGURATION            ###
-        // ##################################################################
+  // --- READ SENSORS ---
+  float dc_v = 0;
+  float dc_a = 0;
+  float ac_v = 0;
+  float ac_a = 0;
+  String status = "normal";
+  String message = "";
 
-        // --- Get references to our HTML elements ---
-        const statusElement = document.getElementById("connection-status");
-        const statusContainer = document.getElementById("status-container");
-        
-        // References for multimeter values
-        const dcVoltageElement = document.getElementById("dc-voltage-value");
-        const dcCurrentElement = document.getElementById("dc-current-value");
-        const acVoltageElement = document.getElementById("ac-voltage-value");
-        const acCurrentElement = document.getElementById("ac-current-value");
-        
-        // References for system status card
-        const systemStatusCard = document.getElementById("system-status-card");
-        const systemStatusText = document.getElementById("system-status-text");
+  if (systemActive) {
+    // Simulate Normal Readings
+    dc_v = 12.0 + (random(-50, 50) / 100.0);
+    dc_a = 1.5 + (random(-10, 10) / 100.0);
+    ac_v = 220.0 + (random(-200, 200) / 100.0);
+    ac_a = 0.4 + (random(-5, 5) / 100.0);
 
-        const messageLog = document.getElementById("message-log");
+    // Check Logic
+    if (dc_a > 2.0) {
+      status = "warning";
+      message = "OVERCURRENT DETECTED";
+    }
+  } else {
+    // System is in SAFE MODE (Cutoff)
+    status = "safe_mode";
+    message = "EMERGENCY STOP ACTIVE";
+    // Values stay at 0
+  }
 
-        // --- Create a unique client ID for this dashboard session ---
-        const clientId = "mcu_dashboard_" + Math.random().toString(16).substr(2, 8);
+  // --- SEND DATA ---
+  StaticJsonDocument<256> doc;
+  doc["dc_v"] = dc_v;
+  doc["dc_a"] = dc_a;
+  doc["ac_v"] = ac_v;
+  doc["ac_a"] = ac_a;
+  doc["status"] = status;
+  doc["message"] = message;
 
-        // --- Create a new Paho MQTT client ---
-        const client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
+  char jsonBuffer[512];
+  serializeJson(doc, jsonBuffer);
+  
+  client.publish(topic_data, jsonBuffer);
 
-        // --- Set up the callback functions ---
-        client.onConnectionLost = onConnectionLost;
-        client.onMessageArrived = onMessageArrived;
-
-        // --- Function to connect to the broker ---
-        function startConnect() {
-            logToScreen("Connecting to MQTT broker (Secure)...");
-            client.connect({
-                onSuccess: onConnect,
-                onFailure: onConnectFailure,
-                useSSL: true // CHANGED: Must be true for port 8884
-            });
-        }
-
-        // --- Called when the client connects successfully ---
-        function onConnect() {
-            logToScreen("Connected to broker!");
-            
-            // Update the status UI
-            statusElement.textContent = "Connected";
-            statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-green-100 border-l-4 border-green-500";
-            statusContainer.querySelector('p').className = "font-semibold text-lg text-green-700";
-
-            // Subscribe to the topic
-            logToScreen(`Subscribing to topic: ${MqttTopic}`);
-            client.subscribe(MqttTopic);
-        }
-
-        // --- Called when the client fails to connect ---
-        function onConnectFailure(response) {
-            logToScreen("Connection failed: " + response.errorMessage);
-            statusElement.textContent = "Connection Failed!";
-            statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500";
-            statusContainer.querySelector('p').className = "font-semibold text-lg text-red-700";
-        }
-
-        // --- Called when the connection is lost ---
-        function onConnectionLost(responseObject) {
-            if (responseObject.errorCode !== 0) {
-                logToScreen("Connection lost: " + responseObject.errorMessage);
-                statusElement.textContent = "Connection Lost!";
-                statusContainer.className = "mb-6 p-4 rounded-lg shadow-md text-center transition-all duration-300 bg-red-100 border-l-4 border-red-500";
-                statusContainer.querySelector('p').className = "font-semibold text-lg text-red-700";
-            }
-        }
-
-        // --- Called when a message arrives ---
-        function onMessageArrived(message) {
-            const topic = message.destinationName;
-            const payload = message.payloadString;
-            logToScreen(`Message arrived: ${payload}`);
-
-            try {
-                const data = JSON.parse(payload);
-
-                // Check for DC Voltage
-                if (data.dc_v !== undefined) {
-                    dcVoltageElement.textContent = data.dc_v.toFixed(2); 
-                }
-
-                // Check for DC Current
-                if (data.dc_a !== undefined) {
-                    dcCurrentElement.textContent = data.dc_a.toFixed(2);
-                }
-                
-                // Check for AC Voltage
-                if (data.ac_v !== undefined) {
-                    acVoltageElement.textContent = data.ac_v.toFixed(2);
-                }
-
-                // Check for AC Current
-                if (data.ac_a !== undefined) {
-                    acCurrentElement.textContent = data.ac_a.toFixed(2);
-                }
-
-                // Check for System Status
-                if (data.status !== undefined) {
-                    if (data.status === "warning") {
-                        // Set card to WARNING state
-                        systemStatusCard.className = systemStatusCard.className.replace("status-normal", "status-warning");
-                        systemStatusText.textContent = data.message || "WARNING!";
-                    } else {
-                        // Set card to NORMAL state
-                        systemStatusCard.className = systemStatusCard.className.replace("status-warning", "status-normal");
-                        systemStatusText.textContent = "Under Control";
-                    }
-                }
-
-            } catch (error) {
-                logToScreen("Error parsing incoming message as JSON: " + error.message);
-            }
-        }
-
-        // --- Helper function to log to the on-screen console ---
-        function logToScreen(message) {
-            console.log(message); 
-            const now = new Date().toLocaleTimeString();
-            messageLog.innerHTML = `[${now}] ${message}\n` + messageLog.innerHTML;
-            const lines = messageLog.innerHTML.split('\n');
-            if (lines.length > 50) {
-                messageLog.innerHTML = lines.slice(0, 50).join('\n');
-            }
-        }
-
-        // --- Start the connection process when the page loads ---
-        window.addEventListener('load', startConnect);
-
-    </script>
-</body>
-</html>
+  delay(1000); // Faster update rate (1 sec) for smoother charts
+}
