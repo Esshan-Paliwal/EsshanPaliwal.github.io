@@ -1,135 +1,439 @@
-#include <WiFi.h>          // Use <ESP8266WiFi.h> if using ESP8266
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
-
-// --- 1. WIFI SETTINGS ---
-const char* ssid = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
-
-// --- 2. MQTT SETTINGS ---
-const char* mqtt_server = "broker.hivemq.com";
-const int mqtt_port = 1883; 
-const char* topic_data = "my-multimeter/data";
-const char* topic_command = "my-multimeter/command"; // New topic to listen to!
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
-// --- 3. SYSTEM STATE ---
-bool systemActive = true; // Starts as ON
-
-// --- SETUP ---
-void setup() {
-  Serial.begin(115200);
-  setup_wifi();
-  
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback); // Register the function that handles incoming messages
-}
-
-// --- WIFI CONNECT ---
-void setup_wifi() {
-  delay(10);
-  Serial.print("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("Connected!");
-}
-
-// --- MQTT CALLBACK (RECEIVE MESSAGES) ---
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-
-  // Convert payload to a String for easy comparison
-  String msg = "";
-  for (int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
-  Serial.println(msg);
-
-  // --- HANDLE COMMANDS ---
-  if (String(topic) == topic_command) {
-    if (msg == "CUTOFF") {
-      Serial.println("!!! EMERGENCY CUTOFF RECEIVED !!!");
-      systemActive = false;
-      // Add code here to physically turn off relay: digitalWrite(RELAY_PIN, LOW);
-    }
-    else if (msg == "RESET") {
-      Serial.println("... System Resetting ...");
-      systemActive = true;
-      // Add code here to turn relay back on: digitalWrite(RELAY_PIN, HIGH);
-    }
-  }
-}
-
-// --- RECONNECT ---
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Multimeter</title>
     
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
-      // !! IMPORTANT: Subscribe to the command topic !!
-      client.subscribe(topic_command);
-    } else {
-      delay(5000);
-    }
-  }
-}
+    <!-- 1. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Paho MQTT Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js"></script>
+    
+    <!-- 3. Chart.js for Graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-// --- MAIN LOOP ---
-void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop(); // Keep MQTT alive
+    <!-- 4. Google Fonts: Orbitron (Digital Look) -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-  // --- READ SENSORS ---
-  float dc_v = 0;
-  float dc_a = 0;
-  float ac_v = 0;
-  float ac_a = 0;
-  String status = "normal";
-  String message = "";
+    <style>
+        /* Cyberpunk Theme Variables */
+        :root {
+            --bg-dark: #050505;
+            --panel-bg: #111111;
+            --neon-blue: #00f3ff;
+            --neon-green: #00ff41;
+            --neon-red: #ff003c;
+            --neon-yellow: #ffee00;
+            --grid-line: #1a1a1a;
+        }
 
-  if (systemActive) {
-    // Simulate Normal Readings
-    dc_v = 12.0 + (random(-50, 50) / 100.0);
-    dc_a = 1.5 + (random(-10, 10) / 100.0);
-    ac_v = 220.0 + (random(-200, 200) / 100.0);
-    ac_a = 0.4 + (random(-5, 5) / 100.0);
+        body {
+            background-color: var(--bg-dark);
+            color: #e0e0e0;
+            font-family: 'Roboto Mono', monospace;
+        }
 
-    // Check Logic
-    if (dc_a > 2.0) {
-      status = "warning";
-      message = "OVERCURRENT DETECTED";
-    }
-  } else {
-    // System is in SAFE MODE (Cutoff)
-    status = "safe_mode";
-    message = "EMERGENCY STOP ACTIVE";
-    // Values stay at 0
-  }
+        h1, h2, .digital-font {
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 2px;
+        }
 
-  // --- SEND DATA ---
-  StaticJsonDocument<256> doc;
-  doc["dc_v"] = dc_v;
-  doc["dc_a"] = dc_a;
-  doc["ac_v"] = ac_v;
-  doc["ac_a"] = ac_a;
-  doc["status"] = status;
-  doc["message"] = message;
+        /* Neon Glow Effects */
+        .glow-text-blue { text-shadow: 0 0 10px var(--neon-blue); }
+        .glow-text-green { text-shadow: 0 0 10px var(--neon-green); }
+        .glow-text-red { text-shadow: 0 0 10px var(--neon-red); }
 
-  char jsonBuffer[512];
-  serializeJson(doc, jsonBuffer);
-  
-  client.publish(topic_data, jsonBuffer);
+        .cyber-card {
+            background-color: var(--panel-bg);
+            border: 1px solid #333;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+            position: relative;
+            overflow: hidden;
+        }
 
-  delay(1000); // Faster update rate (1 sec) for smoother charts
-}
+        .cyber-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--neon-blue), transparent);
+        }
+
+        /* Status Warning Animation */
+        @keyframes flash-red {
+            0% { background-color: var(--panel-bg); box-shadow: 0 0 0 red; }
+            50% { background-color: #330000; box-shadow: 0 0 30px red; }
+            100% { background-color: var(--panel-bg); box-shadow: 0 0 0 red; }
+        }
+        .alarm-active {
+            animation: flash-red 1s infinite;
+            border-color: var(--neon-red);
+        }
+
+        /* Buttons */
+        .btn-cyber {
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 1px;
+        }
+        .btn-cyber:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- Header -->
+        <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-4">
+            <div>
+                <h1 class="text-3xl md:text-5xl font-bold text-white glow-text-blue">SYSTEM MONITOR</h1>
+                <p class="text-gray-500 mt-2">CONNECTED VIA SECURE MQTT PROTOCOL</p>
+            </div>
+            <div class="mt-4 md:mt-0 text-right">
+                <div id="connection-badge" class="inline-block px-4 py-2 bg-gray-900 border border-red-500 text-red-500 rounded font-bold digital-font">
+                    DISCONNECTED
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Column 1: DC Readings -->
+            <div class="cyber-card p-6 rounded-lg">
+                <h2 class="text-xl text-cyan-400 border-b border-gray-800 pb-2 mb-4">DC CIRCUIT</h2>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <!-- DC Voltage -->
+                    <div class="text-center">
+                        <p class="text-gray-500 text-xs">VOLTAGE</p>
+                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
+                            <span id="dc-v">0.00</span><span class="text-lg">V</span>
+                        </div>
+                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-v" class="text-cyan-600">0.00</span></p>
+                    </div>
+                    <!-- DC Current -->
+                    <div class="text-center">
+                        <p class="text-gray-500 text-xs">CURRENT</p>
+                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
+                            <span id="dc-a">0.00</span><span class="text-lg">A</span>
+                        </div>
+                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-a" class="text-cyan-600">0.00</span></p>
+                    </div>
+                </div>
+                <!-- DC Chart -->
+                <div class="h-40">
+                    <canvas id="dcChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Column 2: AC Readings -->
+            <div class="cyber-card p-6 rounded-lg">
+                <h2 class="text-xl text-yellow-400 border-b border-gray-800 pb-2 mb-4">AC CIRCUIT</h2>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <!-- AC Voltage -->
+                    <div class="text-center">
+                        <p class="text-gray-500 text-xs">VOLTAGE</p>
+                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
+                            <span id="ac-v">0.00</span><span class="text-lg">V</span>
+                        </div>
+                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-v" class="text-yellow-600">0.00</span></p>
+                    </div>
+                    <!-- AC Current -->
+                    <div class="text-center">
+                        <p class="text-gray-500 text-xs">CURRENT</p>
+                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
+                            <span id="ac-a">0.00</span><span class="text-lg">A</span>
+                        </div>
+                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-a" class="text-yellow-600">0.00</span></p>
+                    </div>
+                </div>
+                <!-- AC Chart -->
+                <div class="h-40">
+                    <canvas id="acChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Column 3: System Control & Status -->
+            <div class="space-y-6">
+                
+                <!-- System Status -->
+                <div id="status-card" class="cyber-card p-6 rounded-lg text-center flex flex-col justify-center h-48">
+                    <p class="text-gray-400 text-sm mb-2">SYSTEM STATUS</p>
+                    <div id="status-text" class="text-4xl font-bold text-green-500 digital-font glow-text-green">
+                        NORMAL
+                    </div>
+                    <p id="status-msg" class="text-gray-500 mt-2 text-sm h-5">--</p>
+                </div>
+
+                <!-- Controls -->
+                <div class="cyber-card p-6 rounded-lg">
+                    <h2 class="text-xl text-white border-b border-gray-800 pb-2 mb-4">COMMAND CENTER</h2>
+                    <div class="space-y-3">
+                        <button onclick="sendCommand('CUTOFF')" class="btn-cyber w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded shadow-[0_0_15px_rgba(220,38,38,0.5)]">
+                            ☢ EMERGENCY CUTOFF
+                        </button>
+                        <button onclick="sendCommand('RESET')" class="btn-cyber w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 rounded border border-green-500 text-sm">
+                            ↻ SYSTEM RESET
+                        </button>
+                    </div>
+                    <div class="mt-4 flex items-center justify-center">
+                        <input type="checkbox" id="audio-toggle" class="mr-2">
+                        <label for="audio-toggle" class="text-xs text-gray-400 cursor-pointer">ENABLE AUDIO ALERTS</label>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <!-- Log -->
+        <div class="mt-6">
+            <details>
+                <summary class="text-gray-600 text-xs cursor-pointer hover:text-cyan-400">DEBUG CONSOLE</summary>
+                <div class="bg-black border border-gray-800 p-2 mt-2 rounded h-32 overflow-y-auto font-mono text-xs text-green-500" id="message-log"></div>
+            </details>
+        </div>
+
+    </div>
+
+    <script>
+        // ################# CONFIGURATION #################
+        const brokerHost = "broker.hivemq.com";
+        const brokerPort = 8884; 
+        const topicData = "my-multimeter/data";
+        const topicCommand = "my-multimeter/command";
+        // #################################################
+
+        // --- Global Variables ---
+        let client;
+        let chartDC, chartAC;
+        // Max values tracking
+        let peaks = { dc_v: 0, dc_a: 0, ac_v: 0, ac_a: 0 };
+        // Audio Context
+        let audioCtx = null;
+        let isAlarmPlaying = false;
+
+        // --- Chart Setup (Chart.js) ---
+        const commonChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Disable animation for performance
+            scales: {
+                x: { display: false }, // Hide time axis for cleaner look
+                y: { 
+                    grid: { color: '#222' },
+                    ticks: { color: '#666', font: { family: 'Roboto Mono' } }
+                }
+            },
+            plugins: { legend: { display: false } }
+        };
+
+        function initCharts() {
+            // DC Chart
+            const ctxDC = document.getElementById('dcChart').getContext('2d');
+            chartDC = new Chart(ctxDC, {
+                type: 'line',
+                data: {
+                    labels: Array(20).fill(''), // 20 data points window
+                    datasets: [{
+                        borderColor: '#00f3ff', // Cyan
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4, // Smooth curve
+                        data: Array(20).fill(0)
+                    }]
+                },
+                options: commonChartOptions
+            });
+
+            // AC Chart
+            const ctxAC = document.getElementById('acChart').getContext('2d');
+            chartAC = new Chart(ctxAC, {
+                type: 'line',
+                data: {
+                    labels: Array(20).fill(''),
+                    datasets: [{
+                        borderColor: '#ffee00', // Yellow
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        data: Array(20).fill(0)
+                    }]
+                },
+                options: commonChartOptions
+            });
+        }
+
+        // --- Audio Siren Logic ---
+        function playAlarm() {
+            const checkbox = document.getElementById('audio-toggle');
+            if (!checkbox.checked) return;
+
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Simple oscillator siren
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+            oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.5);
+            
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume 10%
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- MQTT Logic ---
+        function startConnect() {
+            const clientId = "cyber_meter_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
+            
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            log("Connecting to Grid...");
+            client.connect({
+                onSuccess: onConnect,
+                onFailure: onFailure,
+                useSSL: true
+            });
+        }
+
+        function onConnect() {
+            log("LINK ESTABLISHED");
+            updateConnectionStatus(true);
+            client.subscribe(topicData);
+        }
+
+        function onFailure(e) {
+            log("LINK FAILED: " + e.errorMessage);
+            updateConnectionStatus(false);
+        }
+
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                log("CONNECTION DROPPED: " + responseObject.errorMessage);
+                updateConnectionStatus(false);
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const badge = document.getElementById('connection-badge');
+            if (isConnected) {
+                badge.textContent = "CONNECTED";
+                badge.className = "inline-block px-4 py-2 bg-green-900 border border-green-500 text-green-400 rounded font-bold digital-font glow-text-green";
+            } else {
+                badge.textContent = "DISCONNECTED";
+                badge.className = "inline-block px-4 py-2 bg-red-900 border border-red-500 text-red-500 rounded font-bold digital-font glow-text-red";
+            }
+        }
+
+        function sendCommand(cmd) {
+            if (client && client.isConnected()) {
+                log(`SENDING COMMAND: ${cmd}`);
+                const message = new Paho.MQTT.Message(cmd);
+                message.destinationName = topicCommand;
+                client.send(message);
+            } else {
+                alert("Cannot send command: System Disconnected");
+            }
+        }
+
+        // --- Data Handling ---
+        function onMessageArrived(message) {
+            try {
+                const payload = message.payloadString;
+                const data = JSON.parse(payload);
+                
+                updateValues(data);
+                updateCharts(data);
+                checkStatus(data);
+
+            } catch (e) {
+                log("Data Error: " + e.message);
+            }
+        }
+
+        function updateValues(data) {
+            // Update Main Numbers
+            if (data.dc_v !== undefined) document.getElementById('dc-v').innerText = data.dc_v.toFixed(2);
+            if (data.dc_a !== undefined) document.getElementById('dc-a').innerText = data.dc_a.toFixed(2);
+            if (data.ac_v !== undefined) document.getElementById('ac-v').innerText = data.ac_v.toFixed(1);
+            if (data.ac_a !== undefined) document.getElementById('ac-a').innerText = data.ac_a.toFixed(2);
+
+            // Update Peak Holds
+            if (data.dc_v > peaks.dc_v) peaks.dc_v = data.dc_v;
+            if (data.dc_a > peaks.dc_a) peaks.dc_a = data.dc_a;
+            if (data.ac_v > peaks.ac_v) peaks.ac_v = data.ac_v;
+            if (data.ac_a > peaks.ac_a) peaks.ac_a = data.ac_a;
+
+            document.getElementById('peak-dc-v').innerText = peaks.dc_v.toFixed(2);
+            document.getElementById('peak-dc-a').innerText = peaks.dc_a.toFixed(2);
+            document.getElementById('peak-ac-v').innerText = peaks.ac_v.toFixed(1);
+            document.getElementById('peak-ac-a').innerText = peaks.ac_a.toFixed(2);
+        }
+
+        function updateCharts(data) {
+            // Shift data logic: remove first, add new at end
+            
+            // DC Chart (Visualizing DC Current for variation)
+            const valDC = data.dc_a !== undefined ? data.dc_a : 0;
+            chartDC.data.datasets[0].data.shift();
+            chartDC.data.datasets[0].data.push(valDC);
+            chartDC.update();
+
+            // AC Chart (Visualizing AC Voltage)
+            const valAC = data.ac_v !== undefined ? data.ac_v : 0;
+            chartAC.data.datasets[0].data.shift();
+            chartAC.data.datasets[0].data.push(valAC);
+            chartAC.update();
+        }
+
+        function checkStatus(data) {
+            const card = document.getElementById('status-card');
+            const text = document.getElementById('status-text');
+            const msg = document.getElementById('status-msg');
+
+            if (data.status === 'warning') {
+                // WARNING STATE
+                card.classList.add('alarm-active');
+                text.innerText = "WARNING";
+                text.className = "text-4xl font-bold text-red-500 digital-font glow-text-red";
+                msg.innerText = data.message || "CRITICAL FAULT DETECTED";
+                playAlarm(); // Beep!
+            } else {
+                // NORMAL STATE
+                card.classList.remove('alarm-active');
+                if (data.status === 'safe_mode') {
+                    text.innerText = "SAFE MODE";
+                    text.className = "text-4xl font-bold text-orange-500 digital-font";
+                    msg.innerText = "SYSTEM CUTOFF ACTIVE";
+                } else {
+                    text.innerText = "NORMAL";
+                    text.className = "text-4xl font-bold text-green-500 digital-font glow-text-green";
+                    msg.innerText = "SYSTEM OPERATIONAL";
+                }
+            }
+        }
+
+        function log(msg) {
+            const logDiv = document.getElementById('message-log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML = `<div class="border-b border-gray-800 py-1"><span class="text-gray-500">[${time}]</span> ${msg}</div>` + logDiv.innerHTML;
+        }
+
+        // Init
+        window.onload = function() {
+            initCharts();
+            startConnect();
+        };
+
+    </script>
+</body>
+</html>
