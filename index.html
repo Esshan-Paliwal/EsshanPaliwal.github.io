@@ -4,438 +4,154 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cyberpunk Multimeter</title>
-    
-    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Paho MQTT Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js"></script>
-    
-    <!-- 3. Chart.js for Graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- 4. Google Fonts: Orbitron (Digital Look) -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
-
     <style>
-        /* Cyberpunk Theme Variables */
-        :root {
-            --bg-dark: #050505;
-            --panel-bg: #111111;
-            --neon-blue: #00f3ff;
-            --neon-green: #00ff41;
-            --neon-red: #ff003c;
-            --neon-yellow: #ffee00;
-            --grid-line: #1a1a1a;
-        }
-
-        body {
-            background-color: var(--bg-dark);
-            color: #e0e0e0;
-            font-family: 'Roboto Mono', monospace;
-        }
-
-        h1, h2, .digital-font {
-            font-family: 'Orbitron', sans-serif;
-            letter-spacing: 2px;
-        }
-
-        /* Neon Glow Effects */
+        :root { --bg-dark: #050505; --panel-bg: #111111; --neon-blue: #00f3ff; --neon-green: #00ff41; --neon-red: #ff003c; --neon-yellow: #ffee00; }
+        body { background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Roboto Mono', monospace; }
+        h1, h2, .digital-font { font-family: 'Orbitron', sans-serif; letter-spacing: 2px; }
         .glow-text-blue { text-shadow: 0 0 10px var(--neon-blue); }
         .glow-text-green { text-shadow: 0 0 10px var(--neon-green); }
         .glow-text-red { text-shadow: 0 0 10px var(--neon-red); }
-
-        .cyber-card {
-            background-color: var(--panel-bg);
-            border: 1px solid #333;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cyber-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 2px;
-            background: linear-gradient(90deg, var(--neon-blue), transparent);
-        }
-
-        /* Status Warning Animation */
-        @keyframes flash-red {
-            0% { background-color: var(--panel-bg); box-shadow: 0 0 0 red; }
-            50% { background-color: #330000; box-shadow: 0 0 30px red; }
-            100% { background-color: var(--panel-bg); box-shadow: 0 0 0 red; }
-        }
-        .alarm-active {
-            animation: flash-red 1s infinite;
-            border-color: var(--neon-red);
-        }
-
-        /* Buttons */
-        .btn-cyber {
-            transition: all 0.2s;
-            text-transform: uppercase;
-            font-family: 'Orbitron', sans-serif;
-            letter-spacing: 1px;
-        }
+        .cyber-card { background-color: var(--panel-bg); border: 1px solid #333; box-shadow: 0 0 15px rgba(0, 0, 0, 0.8); position: relative; overflow: hidden; }
+        .cyber-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--neon-blue), transparent); }
+        @keyframes flash-red { 0%, 100% { background-color: var(--panel-bg); } 50% { background-color: #330000; box-shadow: 0 0 30px red; } }
+        .alarm-active { animation: flash-red 1s infinite; border-color: var(--neon-red); }
+        .btn-cyber { transition: all 0.2s; text-transform: uppercase; font-family: 'Orbitron', sans-serif; letter-spacing: 1px; }
         .btn-cyber:active { transform: scale(0.95); }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-6">
     <div class="max-w-7xl mx-auto">
-        
-        <!-- Header -->
         <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-4">
-            <div>
-                <h1 class="text-3xl md:text-5xl font-bold text-white glow-text-blue">SYSTEM MONITOR</h1>
-                <p class="text-gray-500 mt-2">CONNECTED VIA MOSQUITTO BROKER</p>
-            </div>
-            <div class="mt-4 md:mt-0 text-right">
-                <div id="connection-badge" class="inline-block px-4 py-2 bg-gray-900 border border-red-500 text-red-500 rounded font-bold digital-font">
-                    DISCONNECTED
-                </div>
-            </div>
+            <div><h1 class="text-3xl md:text-5xl font-bold text-white glow-text-blue">SYSTEM MONITOR</h1><p class="text-gray-500 mt-2">CONNECTED VIA EMQX BROKER</p></div>
+            <div class="mt-4 md:mt-0 text-right"><div id="connection-badge" class="inline-block px-4 py-2 bg-gray-900 border border-red-500 text-red-500 rounded font-bold digital-font">DISCONNECTED</div></div>
         </header>
 
-        <!-- Main Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            <!-- Column 1: DC Readings -->
             <div class="cyber-card p-6 rounded-lg">
                 <h2 class="text-xl text-cyan-400 border-b border-gray-800 pb-2 mb-4">DC CIRCUIT</h2>
                 <div class="grid grid-cols-2 gap-4 mb-6">
-                    <!-- DC Voltage -->
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">VOLTAGE</p>
-                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
-                            <span id="dc-v">0.00</span><span class="text-lg">V</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-v" class="text-cyan-600">0.00</span></p>
-                    </div>
-                    <!-- DC Current -->
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">CURRENT</p>
-                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
-                            <span id="dc-a">0.00</span><span class="text-lg">A</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-a" class="text-cyan-600">0.00</span></p>
-                    </div>
+                    <div class="text-center"><p class="text-gray-500 text-xs">VOLTAGE</p><div class="text-4xl font-bold text-cyan-300 digital-font my-2"><span id="dc-v">0.00</span><span class="text-lg">V</span></div><p class="text-xs text-gray-600">PEAK: <span id="peak-dc-v" class="text-cyan-600">0.00</span></p></div>
+                    <div class="text-center"><p class="text-gray-500 text-xs">CURRENT</p><div class="text-4xl font-bold text-cyan-300 digital-font my-2"><span id="dc-a">0.00</span><span class="text-lg">A</span></div><p class="text-xs text-gray-600">PEAK: <span id="peak-dc-a" class="text-cyan-600">0.00</span></p></div>
                 </div>
-                <!-- DC Chart -->
-                <div class="h-40">
-                    <canvas id="dcChart"></canvas>
-                </div>
+                <div class="h-40"><canvas id="dcChart"></canvas></div>
             </div>
 
-            <!-- Column 2: AC Readings -->
             <div class="cyber-card p-6 rounded-lg">
                 <h2 class="text-xl text-yellow-400 border-b border-gray-800 pb-2 mb-4">AC CIRCUIT</h2>
                 <div class="grid grid-cols-2 gap-4 mb-6">
-                    <!-- AC Voltage -->
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">VOLTAGE</p>
-                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
-                            <span id="ac-v">0.00</span><span class="text-lg">V</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-v" class="text-yellow-600">0.00</span></p>
-                    </div>
-                    <!-- AC Current -->
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">CURRENT</p>
-                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
-                            <span id="ac-a">0.00</span><span class="text-lg">A</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-a" class="text-yellow-600">0.00</span></p>
-                    </div>
+                    <div class="text-center"><p class="text-gray-500 text-xs">VOLTAGE</p><div class="text-4xl font-bold text-yellow-300 digital-font my-2"><span id="ac-v">0.00</span><span class="text-lg">V</span></div><p class="text-xs text-gray-600">PEAK: <span id="peak-ac-v" class="text-yellow-600">0.00</span></p></div>
+                    <div class="text-center"><p class="text-gray-500 text-xs">CURRENT</p><div class="text-4xl font-bold text-yellow-300 digital-font my-2"><span id="ac-a">0.00</span><span class="text-lg">A</span></div><p class="text-xs text-gray-600">PEAK: <span id="peak-ac-a" class="text-yellow-600">0.00</span></p></div>
                 </div>
-                <!-- AC Chart -->
-                <div class="h-40">
-                    <canvas id="acChart"></canvas>
-                </div>
+                <div class="h-40"><canvas id="acChart"></canvas></div>
             </div>
 
-            <!-- Column 3: System Control & Status -->
             <div class="space-y-6">
-                
-                <!-- System Status -->
                 <div id="status-card" class="cyber-card p-6 rounded-lg text-center flex flex-col justify-center h-48">
                     <p class="text-gray-400 text-sm mb-2">SYSTEM STATUS</p>
-                    <div id="status-text" class="text-4xl font-bold text-green-500 digital-font glow-text-green">
-                        NORMAL
-                    </div>
+                    <div id="status-text" class="text-4xl font-bold text-green-500 digital-font glow-text-green">NORMAL</div>
                     <p id="status-msg" class="text-gray-500 mt-2 text-sm h-5">--</p>
                 </div>
-
-                <!-- Controls -->
                 <div class="cyber-card p-6 rounded-lg">
                     <h2 class="text-xl text-white border-b border-gray-800 pb-2 mb-4">COMMAND CENTER</h2>
                     <div class="space-y-3">
-                        <button onclick="sendCommand('CUTOFF')" class="btn-cyber w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-                            ☢ EMERGENCY CUTOFF
-                        </button>
-                        <button onclick="sendCommand('RESET')" class="btn-cyber w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 rounded border border-green-500 text-sm">
-                            ↻ SYSTEM RESET
-                        </button>
+                        <button onclick="sendCommand('CUTOFF')" class="btn-cyber w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded shadow-[0_0_15px_rgba(220,38,38,0.5)]">☢ EMERGENCY CUTOFF</button>
+                        <button onclick="sendCommand('RESET')" class="btn-cyber w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 rounded border border-green-500 text-sm">↻ SYSTEM RESET</button>
                     </div>
-                    <div class="mt-4 flex items-center justify-center">
-                        <input type="checkbox" id="audio-toggle" class="mr-2">
-                        <label for="audio-toggle" class="text-xs text-gray-400 cursor-pointer">ENABLE AUDIO ALERTS</label>
-                    </div>
+                    <div class="mt-4 flex items-center justify-center"><input type="checkbox" id="audio-toggle" class="mr-2"><label for="audio-toggle" class="text-xs text-gray-400 cursor-pointer">ENABLE AUDIO ALERTS</label></div>
                 </div>
             </div>
-
         </div>
-        
-        <!-- Log -->
-        <div class="mt-6">
-            <details>
-                <summary class="text-gray-600 text-xs cursor-pointer hover:text-cyan-400">DEBUG CONSOLE</summary>
-                <div class="bg-black border border-gray-800 p-2 mt-2 rounded h-32 overflow-y-auto font-mono text-xs text-green-500" id="message-log"></div>
-            </details>
-        </div>
-
+        <div class="mt-6"><details><summary class="text-gray-600 text-xs cursor-pointer hover:text-cyan-400">DEBUG CONSOLE</summary><div class="bg-black border border-gray-800 p-2 mt-2 rounded h-32 overflow-y-auto font-mono text-xs text-green-500" id="message-log"></div></details></div>
     </div>
 
     <script>
         // ################# CONFIGURATION #################
-        // Updated to use Mosquitto (Public Test Broker)
-        const brokerHost = "test.mosquitto.org";
-        const brokerPort = 8081; // Secure WebSocket Port for Mosquitto
-        
+        const brokerHost = "broker.emqx.io";  // UPDATED
+        const brokerPort = 8084;              // UPDATED (WSS Port)
         const topicData = "my-multimeter/data";
         const topicCommand = "my-multimeter/command";
         // #################################################
 
-        // --- Global Variables ---
-        let client;
-        let chartDC, chartAC;
-        // Max values tracking
+        let client, chartDC, chartAC;
         let peaks = { dc_v: 0, dc_a: 0, ac_v: 0, ac_a: 0 };
-        // Audio Context
         let audioCtx = null;
-        let isAlarmPlaying = false;
 
-        // --- Chart Setup (Chart.js) ---
-        const commonChartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false, // Disable animation for performance
-            scales: {
-                x: { display: false }, // Hide time axis for cleaner look
-                y: { 
-                    grid: { color: '#222' },
-                    ticks: { color: '#666', font: { family: 'Roboto Mono' } }
-                }
-            },
-            plugins: { legend: { display: false } }
-        };
+        const commonChartOptions = { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: false }, y: { grid: { color: '#222' }, ticks: { color: '#666', font: { family: 'Roboto Mono' } } } }, plugins: { legend: { display: false } } };
 
         function initCharts() {
-            // DC Chart
-            const ctxDC = document.getElementById('dcChart').getContext('2d');
-            chartDC = new Chart(ctxDC, {
-                type: 'line',
-                data: {
-                    labels: Array(20).fill(''), // 20 data points window
-                    datasets: [{
-                        borderColor: '#00f3ff', // Cyan
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.4, // Smooth curve
-                        data: Array(20).fill(0)
-                    }]
-                },
-                options: commonChartOptions
-            });
-
-            // AC Chart
-            const ctxAC = document.getElementById('acChart').getContext('2d');
-            chartAC = new Chart(ctxAC, {
-                type: 'line',
-                data: {
-                    labels: Array(20).fill(''),
-                    datasets: [{
-                        borderColor: '#ffee00', // Yellow
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.4,
-                        data: Array(20).fill(0)
-                    }]
-                },
-                options: commonChartOptions
-            });
+            chartDC = new Chart(document.getElementById('dcChart').getContext('2d'), { type: 'line', data: { labels: Array(20).fill(''), datasets: [{ borderColor: '#00f3ff', borderWidth: 2, pointRadius: 0, tension: 0.4, data: Array(20).fill(0) }] }, options: commonChartOptions });
+            chartAC = new Chart(document.getElementById('acChart').getContext('2d'), { type: 'line', data: { labels: Array(20).fill(''), datasets: [{ borderColor: '#ffee00', borderWidth: 2, pointRadius: 0, tension: 0.4, data: Array(20).fill(0) }] }, options: commonChartOptions });
         }
 
-        // --- Audio Siren Logic ---
         function playAlarm() {
-            const checkbox = document.getElementById('audio-toggle');
-            if (!checkbox.checked) return;
-
+            if (!document.getElementById('audio-toggle').checked) return;
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Simple oscillator siren
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-            oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.5);
-            
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume 10%
-            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.5);
+            const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+            o.type = 'sawtooth'; o.frequency.setValueAtTime(800, audioCtx.currentTime); o.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.5);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+            o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.5);
         }
 
-        // --- MQTT Logic ---
         function startConnect() {
-            const clientId = "cyber_meter_" + Math.random().toString(16).substr(2, 8);
+            const clientId = "cyber_" + Math.random().toString(16).substr(2, 8);
             client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
-            
             client.onConnectionLost = onConnectionLost;
             client.onMessageArrived = onMessageArrived;
-
-            log("Connecting to Grid (Mosquitto)...");
-            client.connect({
-                onSuccess: onConnect,
-                onFailure: onFailure,
-                useSSL: true
-            });
+            log("Connecting to EMQX...");
+            client.connect({ onSuccess: onConnect, onFailure: onFailure, useSSL: true });
         }
 
-        function onConnect() {
-            log("LINK ESTABLISHED");
-            updateConnectionStatus(true);
-            client.subscribe(topicData);
-        }
+        function onConnect() { log("CONNECTED TO EMQX"); updateConnectionStatus(true); client.subscribe(topicData); }
+        function onFailure(e) { log("FAILED: " + e.errorMessage); updateConnectionStatus(false); }
+        function onConnectionLost(r) { if (r.errorCode !== 0) { log("LOST: " + r.errorMessage); updateConnectionStatus(false); } }
 
-        function onFailure(e) {
-            log("LINK FAILED: " + e.errorMessage);
-            updateConnectionStatus(false);
-        }
-
-        function onConnectionLost(responseObject) {
-            if (responseObject.errorCode !== 0) {
-                log("CONNECTION DROPPED: " + responseObject.errorMessage);
-                updateConnectionStatus(false);
-            }
-        }
-
-        function updateConnectionStatus(isConnected) {
-            const badge = document.getElementById('connection-badge');
-            if (isConnected) {
-                badge.textContent = "CONNECTED";
-                badge.className = "inline-block px-4 py-2 bg-green-900 border border-green-500 text-green-400 rounded font-bold digital-font glow-text-green";
-            } else {
-                badge.textContent = "DISCONNECTED";
-                badge.className = "inline-block px-4 py-2 bg-red-900 border border-red-500 text-red-500 rounded font-bold digital-font glow-text-red";
-            }
+        function updateConnectionStatus(c) {
+            const b = document.getElementById('connection-badge');
+            if (c) { b.textContent = "CONNECTED"; b.className = "inline-block px-4 py-2 bg-green-900 border border-green-500 text-green-400 rounded font-bold digital-font glow-text-green"; }
+            else { b.textContent = "DISCONNECTED"; b.className = "inline-block px-4 py-2 bg-red-900 border border-red-500 text-red-500 rounded font-bold digital-font glow-text-red"; }
         }
 
         function sendCommand(cmd) {
-            if (client && client.isConnected()) {
-                log(`SENDING COMMAND: ${cmd}`);
-                const message = new Paho.MQTT.Message(cmd);
-                message.destinationName = topicCommand;
-                client.send(message);
-            } else {
-                log("ERROR: Cannot send command. System Disconnected.");
-            }
+            if (client && client.isConnected()) { log(`CMD: ${cmd}`); const m = new Paho.MQTT.Message(cmd); m.destinationName = topicCommand; client.send(m); }
+            else alert("Disconnected");
         }
 
-        // --- Data Handling ---
-        function onMessageArrived(message) {
+        function onMessageArrived(m) {
             try {
-                const payload = message.payloadString;
-                const data = JSON.parse(payload);
-                
-                updateValues(data);
-                updateCharts(data);
-                checkStatus(data);
-
-            } catch (e) {
-                log("Data Error: " + e.message);
-            }
+                const d = JSON.parse(m.payloadString);
+                updateValues(d); updateCharts(d); checkStatus(d);
+            } catch (e) { log("JSON Error"); }
         }
 
-        function updateValues(data) {
-            // Update Main Numbers
-            if (data.dc_v !== undefined) document.getElementById('dc-v').innerText = data.dc_v.toFixed(2);
-            if (data.dc_a !== undefined) document.getElementById('dc-a').innerText = data.dc_a.toFixed(2);
-            if (data.ac_v !== undefined) document.getElementById('ac-v').innerText = data.ac_v.toFixed(1);
-            if (data.ac_a !== undefined) document.getElementById('ac-a').innerText = data.ac_a.toFixed(2);
-
-            // Update Peak Holds
-            if (data.dc_v > peaks.dc_v) peaks.dc_v = data.dc_v;
-            if (data.dc_a > peaks.dc_a) peaks.dc_a = data.dc_a;
-            if (data.ac_v > peaks.ac_v) peaks.ac_v = data.ac_v;
-            if (data.ac_a > peaks.ac_a) peaks.ac_a = data.ac_a;
-
-            document.getElementById('peak-dc-v').innerText = peaks.dc_v.toFixed(2);
-            document.getElementById('peak-dc-a').innerText = peaks.dc_a.toFixed(2);
-            document.getElementById('peak-ac-v').innerText = peaks.ac_v.toFixed(1);
-            document.getElementById('peak-ac-a').innerText = peaks.ac_a.toFixed(2);
+        function updateValues(d) {
+            if (d.dc_v !== undefined) document.getElementById('dc-v').innerText = d.dc_v.toFixed(2);
+            if (d.dc_a !== undefined) document.getElementById('dc-a').innerText = d.dc_a.toFixed(2);
+            if (d.ac_v !== undefined) document.getElementById('ac-v').innerText = d.ac_v.toFixed(1);
+            if (d.ac_a !== undefined) document.getElementById('ac-a').innerText = d.ac_a.toFixed(2);
+            if (d.dc_v > peaks.dc_v) peaks.dc_v = d.dc_v; if (d.dc_a > peaks.dc_a) peaks.dc_a = d.dc_a;
+            if (d.ac_v > peaks.ac_v) peaks.ac_v = d.ac_v; if (d.ac_a > peaks.ac_a) peaks.ac_a = d.ac_a;
+            document.getElementById('peak-dc-v').innerText = peaks.dc_v.toFixed(2); document.getElementById('peak-dc-a').innerText = peaks.dc_a.toFixed(2);
+            document.getElementById('peak-ac-v').innerText = peaks.ac_v.toFixed(1); document.getElementById('peak-ac-a').innerText = peaks.ac_a.toFixed(2);
         }
 
-        function updateCharts(data) {
-            // Shift data logic: remove first, add new at end
-            
-            // DC Chart (Visualizing DC Current for variation)
-            const valDC = data.dc_a !== undefined ? data.dc_a : 0;
-            chartDC.data.datasets[0].data.shift();
-            chartDC.data.datasets[0].data.push(valDC);
-            chartDC.update();
-
-            // AC Chart (Visualizing AC Voltage)
-            const valAC = data.ac_v !== undefined ? data.ac_v : 0;
-            chartAC.data.datasets[0].data.shift();
-            chartAC.data.datasets[0].data.push(valAC);
-            chartAC.update();
+        function updateCharts(d) {
+            chartDC.data.datasets[0].data.shift(); chartDC.data.datasets[0].data.push(d.dc_a || 0); chartDC.update();
+            chartAC.data.datasets[0].data.shift(); chartAC.data.datasets[0].data.push(d.ac_v || 0); chartAC.update();
         }
 
-        function checkStatus(data) {
-            const card = document.getElementById('status-card');
-            const text = document.getElementById('status-text');
-            const msg = document.getElementById('status-msg');
-
-            if (data.status === 'warning') {
-                // WARNING STATE
-                card.classList.add('alarm-active');
-                text.innerText = "WARNING";
-                text.className = "text-4xl font-bold text-red-500 digital-font glow-text-red";
-                msg.innerText = data.message || "CRITICAL FAULT DETECTED";
-                playAlarm(); // Beep!
-            } else {
-                // NORMAL STATE
-                card.classList.remove('alarm-active');
-                if (data.status === 'safe_mode') {
-                    text.innerText = "SAFE MODE";
-                    text.className = "text-4xl font-bold text-orange-500 digital-font";
-                    msg.innerText = "SYSTEM CUTOFF ACTIVE";
-                } else {
-                    text.innerText = "NORMAL";
-                    text.className = "text-4xl font-bold text-green-500 digital-font glow-text-green";
-                    msg.innerText = "SYSTEM OPERATIONAL";
-                }
-            }
+        function checkStatus(d) {
+            const t = document.getElementById('status-text'), m = document.getElementById('status-msg'), c = document.getElementById('status-card');
+            if (d.status === 'warning') { c.classList.add('alarm-active'); t.innerText = "WARNING"; t.className = "text-4xl font-bold text-red-500 digital-font glow-text-red"; m.innerText = d.message || "FAULT"; playAlarm(); }
+            else { c.classList.remove('alarm-active'); if (d.status === 'safe_mode') { t.innerText = "SAFE MODE"; t.className = "text-4xl font-bold text-orange-500 digital-font"; m.innerText = "CUTOFF ACTIVE"; } else { t.innerText = "NORMAL"; t.className = "text-4xl font-bold text-green-500 digital-font glow-text-green"; m.innerText = "OPERATIONAL"; } }
         }
 
-        function log(msg) {
-            const logDiv = document.getElementById('message-log');
-            const time = new Date().toLocaleTimeString();
-            logDiv.innerHTML = `<div class="border-b border-gray-800 py-1"><span class="text-gray-500">[${time}]</span> ${msg}</div>` + logDiv.innerHTML;
-        }
+        function log(m) { const l = document.getElementById('message-log'); const t = new Date().toLocaleTimeString(); l.innerHTML = `<div class="border-b border-gray-800 py-1"><span class="text-gray-500">[${t}]</span> ${m}</div>` + l.innerHTML; }
 
-        // Init
-        window.onload = function() {
-            initCharts();
-            startConnect();
-        };
-
+        window.onload = function() { initCharts(); startConnect(); };
     </script>
 </body>
 </html>
