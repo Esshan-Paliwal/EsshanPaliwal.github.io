@@ -11,8 +11,8 @@
 
     <style>
         body {
-            background-color: #f8fafc; /* Light Gray/White */
-            color: #1e293b; /* Dark Slate */
+            background-color: #f8fafc;
+            color: #1e293b;
             font-family: 'Inter', sans-serif;
         }
 
@@ -33,7 +33,7 @@
         }
 
         /* Smooth color transition for the number flash */
-        #ac-v {
+        #ac-a {
             transition: color 0.3s ease;
         }
     </style>
@@ -65,24 +65,22 @@
                 </div>
             </div>
             <div class="text-right hidden md:block">
-                <p class="text-xs text-green-600 font-mono">UPTIME: 00:42:15</p>
+                <p class="text-xs text-green-600 font-mono">UPTIME: 01:15:42</p>
             </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
 
-            <div class="card p-6 border-t-4 border-blue-500">
+            <div class="card p-6 border-t-4 border-gray-300">
                 <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-gray-500 font-semibold text-sm uppercase tracking-wider">AC Voltage</h2>
-                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">LIVE</span>
+                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">AC Voltage</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
                 </div>
-                <div class="flex items-baseline">
-                    <span id="ac-v" class="text-6xl font-bold text-gray-900 mono-font tracking-tighter">220.00</span>
-                    <span class="ml-2 text-xl text-gray-500 font-medium">V</span>
+                <div class="flex items-baseline opacity-50">
+                    <span id="ac-v" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
+                    <span class="ml-2 text-xl text-gray-400 font-medium">V</span>
                 </div>
-                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-500 w-3/4"></div> 
-                </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
             <div class="card p-6 border-t-4 border-gray-300">
@@ -97,16 +95,17 @@
                 <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
-            <div class="card p-6 border-t-4 border-gray-300">
+            <div class="card p-6 border-t-4 border-blue-500">
                 <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">AC Current</h2>
-                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
+                    <h2 class="text-gray-500 font-semibold text-sm uppercase tracking-wider">AC Current</h2>
+                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">LIVE</span>
                 </div>
-                <div class="flex items-baseline opacity-50">
-                    <span id="ac-a" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
-                    <span class="ml-2 text-xl text-gray-400 font-medium">A</span>
+                <div class="flex items-baseline">
+                    <span id="ac-a" class="text-6xl font-bold text-gray-900 mono-font tracking-tighter">1.21</span>
+                    <span class="ml-2 text-xl text-gray-500 font-medium">A</span>
                 </div>
-                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-500 w-1/2"></div> </div>
             </div>
 
             <div class="card p-6 border-t-4 border-gray-300">
@@ -134,16 +133,16 @@
     <script>
         // --- SIMULATION CONFIGURATION ---
         const UPDATE_INTERVAL = 2000; // 2 Seconds
-        const TARGET_AC_V = 220.0;
+        const TARGET_AC_A = 1.21;
         
         function updateDashboard() {
-            // 1. Generate AC Voltage (Broader range: 218V to 222V)
-            // This makes the movement very obvious
-            const noise = (Math.random() * 4) - 2; 
-            const acVal = (TARGET_AC_V + noise).toFixed(2);
+            // 1. Generate AC Current (Target 1.21A +/- 0.02A)
+            // Range: 1.19A to 1.23A
+            const noise = (Math.random() * 0.04) - 0.02; 
+            const acVal = (TARGET_AC_A + noise).toFixed(2);
 
             // 2. Update the DOM
-            const acElement = document.getElementById('ac-v');
+            const acElement = document.getElementById('ac-a');
             if(acElement) {
                 acElement.innerText = acVal;
                 
@@ -156,14 +155,14 @@
             
             // 3. Keep others at Zero
             document.getElementById('dc-v').innerText = "0.00";
-            document.getElementById('ac-a').innerText = "0.00";
+            document.getElementById('ac-v').innerText = "0.00";
             document.getElementById('dc-a').innerText = "0.00";
 
             // 4. Add to Log
             const time = new Date().toLocaleTimeString();
             const logArea = document.getElementById('log-area');
             if(logArea) {
-                const logLine = `[${time}] UPDATE: AC_VOLTAGE=${acVal}V | STATUS: OK`;
+                const logLine = `[${time}] UPDATE: AC_CURRENT=${acVal}A | STATUS: OK`;
                 logArea.innerHTML = `<div class="border-b border-gray-100 py-1">${logLine}</div>` + logArea.innerHTML;
             }
         }
