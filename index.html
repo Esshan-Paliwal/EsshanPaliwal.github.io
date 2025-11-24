@@ -3,314 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyberpunk Multimeter (API Mode)</title>
+    <title>Lab Multimeter Dashboard</title>
     
-    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- 3. Dweet.io Client Library (The replacement for MQTT) -->
-    <script src="https://dweet.io/client/dweet.io.min.js"></script>
-    
-    <!-- 4. Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 
     <style>
-        /* Cyberpunk Theme Variables */
-        :root {
-            --bg-dark: #050505;
-            --panel-bg: #111111;
-            --neon-blue: #00f3ff;
-            --neon-green: #00ff41;
-            --neon-red: #ff003c;
-            --neon-yellow: #ffee00;
-        }
-
         body {
-            background-color: var(--bg-dark);
-            color: #e0e0e0;
-            font-family: 'Roboto Mono', monospace;
+            background-color: #f8fafc; /* Light Gray/White */
+            color: #1e293b; /* Dark Slate */
+            font-family: 'Inter', sans-serif;
         }
 
-        h1, h2, .digital-font {
-            font-family: 'Orbitron', sans-serif;
-            letter-spacing: 2px;
+        .mono-font {
+            font-family: 'JetBrains Mono', monospace;
         }
 
-        .cyber-card {
-            background-color: var(--panel-bg);
-            border: 1px solid #333;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
-            position: relative;
-            overflow: hidden;
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s;
         }
 
-        .cyber-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 2px;
-            background: linear-gradient(90deg, var(--neon-blue), transparent);
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
-
-        /* Status Warning Animation */
-        @keyframes flash-red {
-            0% { background-color: var(--panel-bg); }
-            50% { background-color: #330000; box-shadow: 0 0 30px red; }
-            100% { background-color: var(--panel-bg); }
-        }
-        .alarm-active {
-            animation: flash-red 1s infinite;
-            border-color: var(--neon-red);
-        }
-
-        /* Buttons */
-        .btn-cyber {
-            transition: all 0.2s;
-            text-transform: uppercase;
-            font-family: 'Orbitron', sans-serif;
-            letter-spacing: 1px;
-        }
-        .btn-cyber:active { transform: scale(0.95); }
-        
-        .glow-text-blue { text-shadow: 0 0 10px var(--neon-blue); }
-        .glow-text-green { text-shadow: 0 0 10px var(--neon-green); }
-        .glow-text-red { text-shadow: 0 0 10px var(--neon-red); }
     </style>
 </head>
-<body class="min-h-screen p-4 md:p-6">
-    <div class="max-w-7xl mx-auto">
+<body class="min-h-screen p-6 flex flex-col">
+
+    <div class="max-w-6xl mx-auto w-full">
         
-        <!-- Header -->
-        <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-4">
+        <header class="mb-8 flex justify-between items-center border-b border-gray-200 pb-6">
             <div>
-                <h1 class="text-3xl md:text-5xl font-bold text-white glow-text-blue">SYSTEM MONITOR</h1>
-                <p class="text-gray-500 mt-2">CONNECTED VIA HTTP API (PORT 80)</p>
+                <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">Project Dashboard</h1>
+                <p class="text-gray-500 mt-1">Real-time Sensor Monitoring</p>
             </div>
-            <div class="mt-4 md:mt-0 text-right">
-                <div id="connection-badge" class="inline-block px-4 py-2 bg-gray-900 border border-red-500 text-red-500 rounded font-bold digital-font">
-                    WAITING FOR DATA...
-                </div>
+            <div class="flex items-center space-x-2">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span class="text-sm font-medium text-green-600">Live Connection</span>
             </div>
         </header>
 
-        <!-- Main Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            <!-- Column 1: DC Readings -->
-            <div class="cyber-card p-6 rounded-lg">
-                <h2 class="text-xl text-cyan-400 border-b border-gray-800 pb-2 mb-4">DC CIRCUIT</h2>
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">VOLTAGE</p>
-                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
-                            <span id="dc-v">0.00</span><span class="text-lg">V</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-v" class="text-cyan-600">0.00</span></p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">CURRENT</p>
-                        <div class="text-4xl font-bold text-cyan-300 digital-font my-2">
-                            <span id="dc-a">0.00</span><span class="text-lg">A</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-dc-a" class="text-cyan-600">0.00</span></p>
-                    </div>
+        <div class="mb-8 bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg flex items-center justify-between">
+            <div class="flex items-center">
+                <svg class="w-6 h-6 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div>
+                    <p class="font-bold text-green-800 text-lg">SYSTEM NORMAL</p>
+                    <p class="text-green-700 text-sm">Everything Under Control</p>
                 </div>
-                <div class="h-40"><canvas id="dcChart"></canvas></div>
+            </div>
+            <div class="text-right hidden md:block">
+                <p class="text-xs text-green-600 font-mono">UPTIME: 00:42:15</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+            <div class="card p-6 border-t-4 border-blue-500">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-gray-500 font-semibold text-sm uppercase tracking-wider">AC Voltage</h2>
+                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">LIVE</span>
+                </div>
+                <div class="flex items-baseline">
+                    <span id="ac-v" class="text-6xl font-bold text-gray-900 mono-font tracking-tighter">220.00</span>
+                    <span class="ml-2 text-xl text-gray-500 font-medium">V</span>
+                </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-500 w-3/4"></div> </div>
             </div>
 
-            <!-- Column 2: AC Readings -->
-            <div class="cyber-card p-6 rounded-lg">
-                <h2 class="text-xl text-yellow-400 border-b border-gray-800 pb-2 mb-4">AC CIRCUIT</h2>
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">VOLTAGE</p>
-                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
-                            <span id="ac-v">0.00</span><span class="text-lg">V</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-v" class="text-yellow-600">0.00</span></p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-gray-500 text-xs">CURRENT</p>
-                        <div class="text-4xl font-bold text-yellow-300 digital-font my-2">
-                            <span id="ac-a">0.00</span><span class="text-lg">A</span>
-                        </div>
-                        <p class="text-xs text-gray-600">PEAK: <span id="peak-ac-a" class="text-yellow-600">0.00</span></p>
-                    </div>
+            <div class="card p-6 border-t-4 border-gray-300">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">DC Voltage</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
                 </div>
-                <div class="h-40"><canvas id="acChart"></canvas></div>
+                <div class="flex items-baseline opacity-50">
+                    <span id="dc-v" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
+                    <span class="ml-2 text-xl text-gray-400 font-medium">V</span>
+                </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
-            <!-- Column 3: Status -->
-            <div class="space-y-6">
-                <div id="status-card" class="cyber-card p-6 rounded-lg text-center flex flex-col justify-center h-48">
-                    <p class="text-gray-400 text-sm mb-2">SYSTEM STATUS</p>
-                    <div id="status-text" class="text-4xl font-bold text-green-500 digital-font glow-text-green">
-                        NORMAL
-                    </div>
-                    <p id="status-msg" class="text-gray-500 mt-2 text-sm h-5">--</p>
+            <div class="card p-6 border-t-4 border-gray-300">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">AC Current</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
                 </div>
+                <div class="flex items-baseline opacity-50">
+                    <span id="ac-a" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
+                    <span class="ml-2 text-xl text-gray-400 font-medium">A</span>
+                </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
+            </div>
 
-                <div class="cyber-card p-6 rounded-lg">
-                    <h2 class="text-xl text-white border-b border-gray-800 pb-2 mb-4">INFO</h2>
-                    <p class="text-xs text-gray-400">Connected to Dweet.io API</p>
-                    <p class="text-xs text-gray-400 mt-1">Thing Name: <span class="text-cyan-400">esshan-multimeter-project</span></p>
-                    
-                    <div class="mt-4 flex items-center justify-center">
-                        <input type="checkbox" id="audio-toggle" class="mr-2">
-                        <label for="audio-toggle" class="text-xs text-gray-400 cursor-pointer">ENABLE AUDIO ALERTS</label>
-                    </div>
+            <div class="card p-6 border-t-4 border-gray-300">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">DC Current</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
                 </div>
+                <div class="flex items-baseline opacity-50">
+                    <span id="dc-a" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
+                    <span class="ml-2 text-xl text-gray-400 font-medium">A</span>
+                </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
         </div>
-        
-        <!-- Log -->
-        <div class="mt-6">
-            <details>
-                <summary class="text-gray-600 text-xs cursor-pointer hover:text-cyan-400">DEBUG CONSOLE</summary>
-                <div class="bg-black border border-gray-800 p-2 mt-2 rounded h-32 overflow-y-auto font-mono text-xs text-green-500" id="message-log"></div>
-            </details>
+
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-bold text-gray-400 uppercase mb-2">System Log</p>
+            <div id="log-area" class="font-mono text-xs text-gray-600 h-20 overflow-hidden">
+                </div>
         </div>
 
     </div>
 
     <script>
-        // ################# CONFIGURATION #################
-        // We use this unique ID to find your data on the web
-        const thingName = "esshan-multimeter-project"; 
-        // #################################################
+        // --- SIMULATION CONFIGURATION ---
+        const UPDATE_INTERVAL = 2000; // 2 Seconds (Matches your Python Script)
+        const TARGET_AC_V = 220.0;
+        
+        function updateDashboard() {
+            // 1. Generate AC Voltage (220V +/- 0.8V)
+            // This math matches your Python script exactly
+            const noise = (Math.random() * 1.6) - 0.8;
+            const acVal = (TARGET_AC_V + noise).toFixed(2);
 
-        let chartDC, chartAC;
-        let peaks = { dc_v: 0, dc_a: 0, ac_v: 0, ac_a: 0 };
-        let audioCtx = null;
-
-        // --- Chart Setup ---
-        const commonChartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            scales: {
-                x: { display: false },
-                y: { grid: { color: '#222' }, ticks: { color: '#666', font: { family: 'Roboto Mono' } } }
-            },
-            plugins: { legend: { display: false } }
-        };
-
-        function initCharts() {
-            chartDC = new Chart(document.getElementById('dcChart').getContext('2d'), {
-                type: 'line',
-                data: { labels: Array(20).fill(''), datasets: [{ borderColor: '#00f3ff', borderWidth: 2, pointRadius: 0, tension: 0.4, data: Array(20).fill(0) }] },
-                options: commonChartOptions
-            });
-            chartAC = new Chart(document.getElementById('acChart').getContext('2d'), {
-                type: 'line',
-                data: { labels: Array(20).fill(''), datasets: [{ borderColor: '#ffee00', borderWidth: 2, pointRadius: 0, tension: 0.4, data: Array(20).fill(0) }] },
-                options: commonChartOptions
-            });
-        }
-
-        // --- Audio Logic ---
-        function playAlarm() {
-            if (!document.getElementById('audio-toggle').checked) return;
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-            o.type = 'sawtooth'; o.frequency.setValueAtTime(800, audioCtx.currentTime); o.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.5);
-            g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-            o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.5);
-        }
-
-        // --- API Listening Logic (Dweet.io) ---
-        function startListening() {
-            log("Connecting to API (dweet.io)...");
+            // 2. Update the DOM
+            document.getElementById('ac-v').innerText = acVal;
             
-            // This library automatically uses WebSockets or HTTP Long Polling (Port 80/443)
-            // It will NOT be blocked by your hotspot.
-            dweetio.listen_for(thingName, function(dweet){
-                // When data arrives, this function runs
-                onMessageArrived(dweet.content);
-            });
-            
-            updateConnectionStatus(true);
-        }
+            // 3. Keep others at Zero (As requested)
+            document.getElementById('dc-v').innerText = "0.00";
+            document.getElementById('ac-a').innerText = "0.00";
+            document.getElementById('dc-a').innerText = "0.00";
 
-        function updateConnectionStatus(c) {
-            const b = document.getElementById('connection-badge');
-            if (c) { 
-                b.textContent = "LISTENING"; 
-                b.className = "inline-block px-4 py-2 bg-green-900 border border-green-500 text-green-400 rounded font-bold digital-font glow-text-green"; 
-            }
-        }
-
-        function onMessageArrived(data) {
-            log("Data Received");
-            updateValues(data);
-            updateCharts(data);
-            checkStatus(data);
-        }
-
-        function updateValues(d) {
-            // Ensure values are numbers
-            const dc_v = parseFloat(d.dc_v || 0);
-            const dc_a = parseFloat(d.dc_a || 0);
-            const ac_v = parseFloat(d.ac_v || 0);
-            const ac_a = parseFloat(d.ac_a || 0);
-
-            document.getElementById('dc-v').innerText = dc_v.toFixed(2);
-            document.getElementById('dc-a').innerText = dc_a.toFixed(2);
-            document.getElementById('ac-v').innerText = ac_v.toFixed(1);
-            document.getElementById('ac-a').innerText = ac_a.toFixed(2);
-
-            // Update Peaks
-            if (dc_v > peaks.dc_v) peaks.dc_v = dc_v;
-            if (dc_a > peaks.dc_a) peaks.dc_a = dc_a;
-            if (ac_v > peaks.ac_v) peaks.ac_v = ac_v;
-            if (ac_a > peaks.ac_a) peaks.ac_a = ac_a;
-
-            document.getElementById('peak-dc-v').innerText = peaks.dc_v.toFixed(2);
-            document.getElementById('peak-dc-a').innerText = peaks.dc_a.toFixed(2);
-            document.getElementById('peak-ac-v').innerText = peaks.ac_v.toFixed(1);
-            document.getElementById('peak-ac-a').innerText = peaks.ac_a.toFixed(2);
-        }
-
-        function updateCharts(d) {
-            chartDC.data.datasets[0].data.shift(); 
-            chartDC.data.datasets[0].data.push(d.dc_a || 0); 
-            chartDC.update();
-
-            chartAC.data.datasets[0].data.shift(); 
-            chartAC.data.datasets[0].data.push(d.ac_v || 0); 
-            chartAC.update();
-        }
-
-        function checkStatus(d) {
-            const t = document.getElementById('status-text'), m = document.getElementById('status-msg'), c = document.getElementById('status-card');
-            if (d.status === 'warning') { 
-                c.classList.add('alarm-active'); 
-                t.innerText = "WARNING"; 
-                t.className = "text-4xl font-bold text-red-500 digital-font glow-text-red"; 
-                m.innerText = d.message || "FAULT"; 
-                playAlarm(); 
-            } else { 
-                c.classList.remove('alarm-active'); 
-                t.innerText = "NORMAL"; 
-                t.className = "text-4xl font-bold text-green-500 digital-font glow-text-green"; 
-                m.innerText = "OPERATIONAL"; 
-            }
-        }
-
-        function log(m) { 
-            const l = document.getElementById('message-log'); 
-            const t = new Date().toLocaleTimeString(); 
-            l.innerHTML = `<div class="border-b border-gray-800 py-1"><span class="text-gray-500">[${t}]</span> ${m}</div>` + l.innerHTML; 
-        }
-
-        // Init
-        window.onload = function() { 
-            initCharts(); 
-            startListening(); 
-        };
-    </script>
-</body>
-</html>
+            // 4. Add to Log
+            const time = new Date().toLocaleTimeString();
+            const logLine = `[${time}] UPDATE: AC_V=${acVal}V | STATUS
