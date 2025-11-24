@@ -31,6 +31,11 @@
             transform: translateY(-2px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
+
+        /* Smooth color transition for the number flash */
+        #ac-v {
+            transition: color 0.3s ease;
+        }
     </style>
 </head>
 <body class="min-h-screen p-6 flex flex-col">
@@ -76,7 +81,8 @@
                     <span class="ml-2 text-xl text-gray-500 font-medium">V</span>
                 </div>
                 <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-500 w-3/4"></div> </div>
+                    <div class="h-full bg-blue-500 w-3/4"></div> 
+                </div>
             </div>
 
             <div class="card p-6 border-t-4 border-gray-300">
@@ -119,7 +125,7 @@
 
         <div class="bg-white rounded-lg shadow p-4">
             <p class="text-xs font-bold text-gray-400 uppercase mb-2">System Log</p>
-            <div id="log-area" class="font-mono text-xs text-gray-600 h-20 overflow-hidden">
+            <div id="log-area" class="font-mono text-xs text-gray-600 h-32 overflow-y-auto">
                 </div>
         </div>
 
@@ -127,23 +133,51 @@
 
     <script>
         // --- SIMULATION CONFIGURATION ---
-        const UPDATE_INTERVAL = 2000; // 2 Seconds (Matches your Python Script)
+        const UPDATE_INTERVAL = 2000; // 2 Seconds
         const TARGET_AC_V = 220.0;
         
         function updateDashboard() {
-            // 1. Generate AC Voltage (220V +/- 0.8V)
-            // This math matches your Python script exactly
-            const noise = (Math.random() * 1.6) - 0.8;
+            // 1. Generate AC Voltage (Broader range: 218V to 222V)
+            // This makes the movement very obvious
+            const noise = (Math.random() * 4) - 2; 
             const acVal = (TARGET_AC_V + noise).toFixed(2);
 
             // 2. Update the DOM
-            document.getElementById('ac-v').innerText = acVal;
+            const acElement = document.getElementById('ac-v');
+            if(acElement) {
+                acElement.innerText = acVal;
+                
+                // Visual Flash Effect (Blue Flash)
+                acElement.style.color = "#2563eb"; 
+                setTimeout(() => {
+                    acElement.style.color = "#111827"; // Back to dark gray
+                }, 300);
+            }
             
-            // 3. Keep others at Zero (As requested)
+            // 3. Keep others at Zero
             document.getElementById('dc-v').innerText = "0.00";
             document.getElementById('ac-a').innerText = "0.00";
             document.getElementById('dc-a').innerText = "0.00";
 
             // 4. Add to Log
             const time = new Date().toLocaleTimeString();
-            const logLine = `[${time}] UPDATE: AC_V=${acVal}V | STATUS
+            const logArea = document.getElementById('log-area');
+            if(logArea) {
+                const logLine = `[${time}] UPDATE: AC_VOLTAGE=${acVal}V | STATUS: OK`;
+                logArea.innerHTML = `<div class="border-b border-gray-100 py-1">${logLine}</div>` + logArea.innerHTML;
+            }
+        }
+
+        // --- Force Start ---
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("Dashboard Simulation Started...");
+            
+            // Run once immediately
+            updateDashboard();
+            
+            // Then run continuously
+            setInterval(updateDashboard, UPDATE_INTERVAL);
+        });
+    </script>
+</body>
+</html>
