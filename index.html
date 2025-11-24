@@ -33,7 +33,7 @@
         }
 
         /* Smooth color transition for the number flash */
-        #dc-a {
+        #dc-v {
             transition: color 0.3s ease;
         }
     </style>
@@ -65,7 +65,7 @@
                 </div>
             </div>
             <div class="text-right hidden md:block">
-                <p class="text-xs text-green-600 font-mono">UPTIME: 01:22:15</p>
+                <p class="text-xs text-green-600 font-mono">UPTIME: 01:45:22</p>
             </div>
         </div>
 
@@ -83,16 +83,18 @@
                 <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
-            <div class="card p-6 border-t-4 border-gray-300">
+            <div class="card p-6 border-t-4 border-blue-500">
                 <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">DC Voltage</h2>
-                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
+                    <h2 class="text-gray-500 font-semibold text-sm uppercase tracking-wider">DC Voltage</h2>
+                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">LIVE</span>
                 </div>
-                <div class="flex items-baseline opacity-50">
-                    <span id="dc-v" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
-                    <span class="ml-2 text-xl text-gray-400 font-medium">V</span>
+                <div class="flex items-baseline">
+                    <span id="dc-v" class="text-6xl font-bold text-gray-900 mono-font tracking-tighter">11.90</span>
+                    <span class="ml-2 text-xl text-gray-500 font-medium">V</span>
                 </div>
-                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                     <div class="h-full bg-blue-500 w-3/4"></div>
+                </div>
             </div>
 
             <div class="card p-6 border-t-4 border-gray-300">
@@ -107,17 +109,16 @@
                 <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
-            <div class="card p-6 border-t-4 border-blue-500">
+            <div class="card p-6 border-t-4 border-gray-300">
                 <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-gray-500 font-semibold text-sm uppercase tracking-wider">DC Current</h2>
-                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">LIVE</span>
+                    <h2 class="text-gray-400 font-semibold text-sm uppercase tracking-wider">DC Current</h2>
+                    <span class="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-1 rounded">IDLE</span>
                 </div>
-                <div class="flex items-baseline">
-                    <span id="dc-a" class="text-6xl font-bold text-gray-900 mono-font tracking-tighter">1.21</span>
-                    <span class="ml-2 text-xl text-gray-500 font-medium">A</span>
+                <div class="flex items-baseline opacity-50">
+                    <span id="dc-a" class="text-6xl font-bold text-gray-400 mono-font tracking-tighter">0.00</span>
+                    <span class="ml-2 text-xl text-gray-400 font-medium">A</span>
                 </div>
-                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-500 w-1/2"></div> </div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full"></div>
             </div>
 
         </div>
@@ -133,15 +134,16 @@
     <script>
         // --- SIMULATION CONFIGURATION ---
         const UPDATE_INTERVAL = 2000; // 2 Seconds
-        const TARGET_DC_A = 1.21;
+        const TARGET_DC_V = 11.9;
         
         function updateDashboard() {
-            // 1. Generate DC Current (Target 1.21A +/- 0.02A)
-            const noise = (Math.random() * 0.04) - 0.02; 
-            const dcVal = (TARGET_DC_A + noise).toFixed(2);
+            // 1. Generate DC Voltage (Target 11.9V +/- 0.15V)
+            // Range: 11.75V to 12.05V
+            const noise = (Math.random() * 0.3) - 0.15; 
+            const dcVal = (TARGET_DC_V + noise).toFixed(2);
 
             // 2. Update the DOM
-            const dcElement = document.getElementById('dc-a');
+            const dcElement = document.getElementById('dc-v');
             if(dcElement) {
                 dcElement.innerText = dcVal;
                 
@@ -153,15 +155,15 @@
             }
             
             // 3. Keep others at Zero
-            document.getElementById('dc-v').innerText = "0.00";
             document.getElementById('ac-v').innerText = "0.00";
             document.getElementById('ac-a').innerText = "0.00";
+            document.getElementById('dc-a').innerText = "0.00";
 
             // 4. Add to Log
             const time = new Date().toLocaleTimeString();
             const logArea = document.getElementById('log-area');
             if(logArea) {
-                const logLine = `[${time}] UPDATE: DC_CURRENT=${dcVal}A | STATUS: OK`;
+                const logLine = `[${time}] UPDATE: DC_VOLTAGE=${dcVal}V | STATUS: OK`;
                 logArea.innerHTML = `<div class="border-b border-gray-100 py-1">${logLine}</div>` + logArea.innerHTML;
             }
         }
